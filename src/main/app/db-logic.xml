@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+    <flow name="Create-Environment">
+        <logger level="INFO" doc:name="Logger"/>
+    	
+    </flow>
+    <flow name="Create-Application">
+         <byte-array-to-string-transformer mimeType="application/json" doc:name="Byte Array to String"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="appName" value="#[payload.name]" doc:name="Variable appName"/>
+        <db:insert config-ref="Data_Store" doc:name="Database">
+            <db:parameterized-query><![CDATA[INSERT INTO application (Application_name) VALUES (#[flowVars['appName']])]]></db:parameterized-query>
+        </db:insert>
+    </flow>
+    <flow name="Create-Version">
+        <byte-array-to-string-transformer mimeType="application/json" doc:name="Byte Array to String"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="appID" value="#[message.inboundProperties.'http.uri.params'.['appid']]" doc:name="Variable appID"/>
+        <db:insert config-ref="Data_Store" doc:name="Database">
+            <db:parameterized-query><![CDATA[INSERT INTO version (version_number, ApplicationID) VALUES (#[payload.version], (select AppID from application where Application_name = #[flowVars.appID]))]]></db:parameterized-query>
+        </db:insert>
+    </flow>
+    <flow name="Create-Properties">
+        <byte-array-to-string-transformer mimeType="application/json" doc:name="Byte Array to String"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="appID" value="#[message.inboundProperties.'http.uri.params'.['appid']]" doc:name="Variable appID"/>
+        <set-variable variableName="versionID" value="#[message.inboundProperties.'http.uri.params'.['versionid']]" doc:name="Variable versionID"/>
+        <foreach collection="#[payload.entrySet()]" doc:name="For Each">
+            <set-variable variableName="propName" value="#[payload.key]" doc:name="Variable propName"/>
+            <set-variable variableName="propValue" value="#[payload.value]" doc:name="Variable propValue"/>
+            <db:insert config-ref="Data_Store" doc:name="Database">
+                <db:parameterized-query><![CDATA[INSERT INTO property
+(
+`Property_name`,
+`version`,
+`Property_value`)
+VALUES
+(#[flowVars.propName], (select versionID from version where Version_number = #[flowVars.versionID]), #[flowVars.propValue]);]]></db:parameterized-query>
+            </db:insert>
+        </foreach>
+    </flow>
+    
+    
+    <flow name="PATCH:propertyID">
+        <byte-array-to-string-transformer mimeType="application/json" doc:name="Byte Array to String"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="versionID" value="#[message.inboundProperties.'http.uri.params'.['propertyid']]" doc:name="Variable property"/>
+        <set-variable variableName="versionID" value="#[message.inboundProperties.'http.uri.params'.['versionid']]" doc:name="Variable versionI"/>
+        <set-variable variableName="appID" value="#[message.inboundProperties.'http.uri.params'.['appid']]" doc:name="Variable appID"/>
+        <foreach collection="#[payload.entrySet()]" doc:name="For Each">
+            <set-variable variableName="propName" value="#[payload.key]" doc:name="Variable propName"/>
+            <set-variable variableName="propValue" value="#[payload.value]" doc:name="Variable propValue"/>
+            <db:update config-ref="Data_Store" doc:name="Database">
+                <db:parameterized-query><![CDATA[update  property 
+set Property_name = #[flowVars.propName], Property_value = #[flowVars.propValue]
+where propertyID = #[flowVars.propertyid] and version = #[flowVars.versionID]]]></db:parameterized-query>
+            </db:update>
+        </foreach>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Could not update property with provided ID&quot; }" doc:name="Set Payload"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="GET:propertyID">
+        <set-variable variableName="appID" value="#[message.inboundProperties.'http.uri.params'.['appid']]" doc:name="Variable appID"/>
+        <set-variable variableName="versionID" value="#[message.inboundProperties.'http.uri.params'.['versionid']]" doc:name="Variable versionID"/>
+        <set-variable variableName="propID" value="#[message.inboundProperties.'http.uri.params'.['propertyid']]" doc:name="Variable propID"/>
+        <db:select config-ref="Data_Store" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT P.property_name, P.Property_value FROM property P
+JOIN version V
+ON  V.versionID = P.version
+JOIN application A 
+ON V.ApplicationID = A.AppID
+where A.AppID = #[flowVars.appID] AND V.versionID =  #[flowVars.versionID] AND P.propertyID = #[flowVars.propID]]]></db:parameterized-query>
+        </db:select>
+        <custom-transformer class="com.ms3.dbl.DBtoPropertyTransformer" doc:name="Java"/>
+        <json:object-to-json-transformer doc:name="Object to JSON"/>
+    </flow>
+    <flow name="GET:versionID">
+        <set-variable variableName="appID" value="#[message.inboundProperties.'http.uri.params'.['appid']]" doc:name="Variable appID"/>
+        <set-variable variableName="versionID" value="#[message.inboundProperties.'http.uri.params'.['versionid']]" doc:name="Variable versionID"/>
+        <db:select config-ref="Data_Store" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT P.property_name, P.Property_value FROM property P
+JOIN version V
+ON  V.versionID = P.version
+JOIN application A 
+ON V.ApplicationID = A.AppID
+where A.Application_name = #[flowVars.appID] AND V.Version_number =  #[flowVars.versionID]]]></db:parameterized-query>
+        </db:select>
+        <custom-transformer class="com.ms3.dbl.DBtoPropertyTransformer" doc:name="Java"/>
+        <json:object-to-json-transformer doc:name="Object to JSON"/>
+    </flow>
+    <flow name="GET:applicationID">
+        <set-variable variableName="appID" value="#[message.inboundProperties.'http.uri.params'.['appid']]" doc:name="Variable appID"/>
+        <db:select config-ref="Data_Store" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT P.property_name, P.Property_value FROM property P
+JOIN version V
+ON  V.versionID = P.version
+JOIN application A 
+ON V.ApplicationID = A.AppID
+where A.Application_name = #[flowVars.appID]]]></db:parameterized-query>
+        </db:select>
+        <custom-transformer class="com.ms3.dbl.DBtoPropertyTransformer" doc:name="Java"/>
+        <json:object-to-json-transformer doc:name="Object to JSON"/>
+    </flow>
+</mule>

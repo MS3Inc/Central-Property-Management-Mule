@@ -1,0 +1,107 @@
+#%RAML 1.0
+title: property-management-api
+version: "0.1"
+mediaType: application/json
+baseUri: http://ms3-inc.com/api
+protocols: [ HTTPS ]
+/environment:
+  /{envid}:
+    /application:
+    displayName: App resource
+    description: Create an application
+    post:
+      body:
+        application/json:
+          examples:
+            resquestApp: !include examples/requestApp.json 
+      responses:
+        201:
+          description: Application created successfully
+        500:
+          description: Application could not be created
+    /{appid}:
+      displayName: Existing application
+      description: Retrieving or modifying an existing application
+      uriParameters:
+        appid:
+          type: string
+          required: true
+      get:
+        description: Retrieve properties by version ID
+        responses:
+          200:
+            description: Properties retrieved successfully
+            body:
+              application/json:
+                examples:
+                  responseProperty: !include examples/responseProperty.json
+          404:
+            description: No properties found for the provided ID           
+      /version:
+        displayName: Adding version
+        description: Adding a version number to an existing application
+        post:
+          body:
+            application/json:
+              examples: 
+                resquestVersion: !include examples/requestVersion.json
+          responses:
+            201:
+              description: Version added successfully
+            500:
+              description: Version could not be added
+        /{versionid}:
+          uriParameters:
+            versionid:
+              type: string
+              required: true      
+          get:
+            description: Retrieve properties by version ID
+            responses:
+              200:
+                description: Properties retrieved successfully
+                body:
+                  application/json:
+                    examples:
+                      responseProperty: !include examples/responseVersion.json
+              404:
+                description: No properties found for the provided ID
+          /property:
+            post:
+              description: Adding property to an existing version
+              body:
+                application/json:
+                  examples:
+                    requestProp: !include examples/requestProp.json
+              responses:
+                201:
+                  description: Property added successfully
+                500:
+                  description: Property could not be added      
+            /{propertyid}:
+              uriParameters:
+                propertyid:
+                  type: string
+                  required: true
+              get:
+                description: Retrieve properties by version ID
+                responses:
+                  200:
+                    description: Properties retrieved successfully
+                    body:
+                      application/json:
+                        examples:
+                          responseProperty: !include examples/responseProperty.json
+                  404:
+                    description: No properties found for the provided ID
+              patch:
+                description: Modify Existing property
+                body:
+                  application/json:
+                    examples:
+                      requestProp: !include examples/requestProp.json
+                responses:
+                  202:
+                    description: Property modified successfully
+                  500:
+                    description: Property could not be modified
